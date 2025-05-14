@@ -21,6 +21,15 @@ LATEST=false
 MANPAGES=1
 CURRENT_PACKAGE_VERSION=0
 
+option_not_exists() {
+    local option_to_check="$1"
+    for option in "${CONFIGURE_OPTIONS[@]}"; do
+        if [[ "$option" == "$option_to_check" ]]; then
+            return 1
+        fi
+    done
+    return 0
+}
 
 command_exists() {
   if ! [[ -x $(command -v "$1") ]]; then
@@ -233,6 +242,7 @@ usage() {
   echo "      --enable-gpl-and-non-free  Enable GPL and non-free codecs  - https://ffmpeg.org/legal.html"
   echo "      --disable-lv2              Disable LV2 libraries"
   echo "  -c, --cleanup                  Remove all working dirs"
+  echo "  -d, --debug                    debug mode"
   echo "      --latest                   Build latest version of dependencies if newer available"
   echo "      --small                    Prioritize small size over speed and usability; don't build manpages"
   echo "      --full-static              Build a full static FFmpeg binary (eg. glibc, pthreads etc...) **only Linux**"
@@ -257,6 +267,9 @@ while (($# > 0)); do
   -*)
     if [[ "$1" == "--build" || "$1" =~ '-b' ]]; then
       bflag='-b'
+    fi
+    if [[ "$1" == "--debug" || "$1" =~ '-d' ]]; then
+      CONFIGURE_OPTIONS+=("--enable-debug=3")
     fi
     if [[ "$1" == "--enable-gpl-and-non-free" ]]; then
       CONFIGURE_OPTIONS+=("--enable-nonfree")
@@ -294,6 +307,10 @@ while (($# > 0)); do
     ;;
   esac
 done
+
+if option_not_exists "--enable-debug=3"; then
+  CONFIGURE_OPTIONS+=("--disable-debug")
+fi
 
 if [ -z "$bflag" ]; then
   if [ -z "$cflag" ]; then
@@ -1066,8 +1083,8 @@ fi
 build "ffmpeg" "$FFMPEG_VERSION"
 download "https://github.com/FFmpeg/FFmpeg/archive/refs/heads/release/$FFMPEG_VERSION.tar.gz" "FFmpeg-release-$FFMPEG_VERSION.tar.gz"
 # shellcheck disable=SC2086
+#--disable-debug \
 execute ./configure "${CONFIGURE_OPTIONS[@]}" \
-  --disable-debug \
   --disable-shared \
   --enable-pthreads \
   --enable-static \
@@ -1081,7 +1098,11 @@ execute ./configure "${CONFIGURE_OPTIONS[@]}" \
   --prefix="${WORKSPACE}" \
   --extra-version="${EXTRA_VERSION}"
 
-execute make -j $MJOBS
+if option_not_exists "--disable-debug"; then
+  execute bear -- make -j $MJOBS
+else
+  execute make -j $MJOBS
+fi
 execute make install
 
 if [ -d "$CWD/.git.bak" ]; then
